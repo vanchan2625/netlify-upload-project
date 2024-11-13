@@ -1,7 +1,7 @@
 // netlify/functions/upload.js
 
 const AWS = require('aws-sdk');
-const { parseMultipartFormData } = require('@netlify/functions');
+const { parseMultipartForm } = require('@netlify/functions');
 
 exports.handler = async (event) => {
   console.log('Function started');
@@ -13,7 +13,7 @@ exports.handler = async (event) => {
   });
 
   // マルチパートフォームデータを解析
-  const { files, fields } = await parseMultipartFormData(event);
+  const { files, fields } = parseMultipartForm(event);
   console.log('Parsed files:', files);
 
   if (!files || files.length === 0) {
