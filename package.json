@@ -12,6 +12,7 @@
   "dependencies": {
     "aws-sdk": "^2.1692.0",
     "formidable": "^3.5.2",
+    "formidable-serverless": "^1.1.1",
     "streamifier": "^0.1.1"
   },
   "engines": {
