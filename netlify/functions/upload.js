@@ -1,9 +1,8 @@
-// netlify/functions/upload.js
-
 const AWS = require('aws-sdk');
-const { parseMultipartForm } = require('@netlify/functions');
+const middy = require('@middy/core');
+const multipartParser = require('@middy/http-multipart-body-parser');
 
-exports.handler = async (event) => {
+const handler = async (event) => {
   console.log('Function started');
   console.log('Environment Variables:', {
     accessKeyId: process.env.S3_ACCESS_KEY_ID,
@@ -12,19 +11,16 @@ exports.handler = async (event) => {
     bucketName: process.env.S3_BUCKET_NAME,
   });
 
-  // マルチパートフォームデータを解析
-  const { files, fields } = parseMultipartForm(event);
-  console.log('Parsed files:', files);
+  // マルチパートフォームデータを解析した結果は event.body に格納されます
+  const file = event.body.file; // フォームの input の name 属性が "file" の場合
 
-  if (!files || files.length === 0) {
+  if (!file) {
     console.error('No file found in the request');
     return {
       statusCode: 400,
       body: JSON.stringify({ message: 'ファイルが見つかりませんでした。' }),
     };
   }
-
-  const file = files[0];
 
   // AWS S3の設定
   const s3 = new AWS.S3({
@@ -36,7 +32,7 @@ exports.handler = async (event) => {
   const params = {
     Bucket: process.env.S3_BUCKET_NAME,
     Key: file.filename,
-    Body: file.content,
+    Body: file.content, // file.content は Buffer オブジェクトです
     ContentType: file.contentType,
   };
 
@@ -53,6 +49,9 @@ exports.handler = async (event) => {
     return {
       statusCode: 500,
       body: JSON.stringify({ message: 'S3へのアップロードに失敗しました。', error: error.message }),
-    };
+      };
   }
 };
+
+// ミドルウェアを適用
+exports.handler = middy(handler).use(multipartParser());
