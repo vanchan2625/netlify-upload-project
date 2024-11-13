@@ -1,7 +1,7 @@
 // functions/upload.js
 const AWS = require('aws-sdk');
-const formidable = require('formidable-serverless');
-const fs = require('fs');
+const Busboy = require('busboy');
+const { PassThrough } = require('stream');
 
 // AWS SDK の設定
 AWS.config.update({
@@ -13,60 +13,66 @@ AWS.config.update({
 const s3 = new AWS.S3();
 
 exports.handler = async (event, context) => {
-  try {
-    console.log('Function invoked');
+  return new Promise((resolve, reject) => {
+    const isBase64 = event.isBase64Encoded;
+    const body = isBase64 ? Buffer.from(event.body, 'base64') : Buffer.from(event.body);
 
-    // Formidable-serverless のインスタンスを生成
-    const form = new formidable.IncomingForm();
+    const headers = event.headers || {};
 
-    // フォームデータの解析
-    const { fields, files } = await new Promise((resolve, reject) => {
-      form.parse(event, (err, fields, files) => {
-        if (err) {
-          console.error('Form parse error:', err);
-          reject(err);
-        } else {
-          console.log('Form parsed successfully:', fields, files);
-          resolve({ fields, files });
-        }
+    console.log('Starting upload function');
+    console.log('Headers:', headers);
+    console.log('Body length:', body.length);
+
+    const busboy = new Busboy({
+      headers: headers,
+    });
+
+    let uploadPromises = [];
+
+    busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+      console.log(`Uploading: ${filename}`);
+
+      const params = {
+        Bucket: process.env.S3_BUCKET_NAME,
+        Key: `uploads/${filename}`,
+        Body: file,
+        ContentType: mimetype,
+        ACL: 'public-read',
+      };
+
+      uploadPromises.push(s3.upload(params).promise());
+    });
+
+    busboy.on('error', (error) => {
+      console.error('Busboy error:', error);
+      reject({
+        statusCode: 500,
+        body: JSON.stringify({ message: 'ファイルアップロード中にエラーが発生しました。', error: error.message }),
       });
     });
 
-    const file = files.file;
-    if (!file) {
-      console.error('No file found in the request');
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ message: 'アップロードするファイルが見つかりません。' }),
-      };
-    }
-    console.log('File received:', file);
+    busboy.on('finish', async () => {
+      try {
+        console.log('Busboy finished parsing');
+        const results = await Promise.all(uploadPromises);
+        console.log('All files uploaded successfully:', results);
 
-    const fileContent = fs.readFileSync(file.path);
-    console.log('File content read, size:', fileContent.length);
+        resolve({
+          statusCode: 200,
+          body: JSON.stringify({ message: 'ファイルが正常にアップロードされました。', urls: results.map(r => r.Location) }),
+        });
+      } catch (error) {
+        console.error('S3 upload error:', error);
+        reject({
+          statusCode: 500,
+          body: JSON.stringify({ message: 'S3へのアップロードに失敗しました。', error: error.message }),
+        });
+      }
+    });
 
-    const params = {
-      Bucket: process.env.S3_BUCKET_NAME,
-      Key: `uploads/${file.name}`, // プレフィックスを使用してファイルを整理
-      Body: fileContent,
-      ContentType: file.type,
-      ACL: 'public-read', // 必要に応じて調整
-    };
-    console.log('S3 upload parameters:', params);
-
-    const data = await s3.upload(params).promise();
-    console.log('File uploaded successfully:', data.Location);
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ message: 'ファイルが正常にアップロードされました。', url: data.Location }),
-    };
-
-  } catch (error) {
-    console.error('Error during upload:', error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ message: 'アップロードに失敗しました。', error: error.message }),
-    };
-  }
+    // PassThrough ストリームを作成してバッファを流す
+    const stream = new PassThrough();
+    stream.end(body);
+    stream.pipe(busboy);
+  });
 };

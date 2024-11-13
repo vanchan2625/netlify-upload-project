@@ -1,3 +1,5 @@
+<!DOCTYPE html>
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -23,9 +25,9 @@
       const result = await response.json();
       const resultDiv = document.getElementById('result');
       if (response.ok) {
-        resultDiv.innerHTML = `<p>アップロード成功: <a href="${result.url}" target="_blank">ファイルを開く</a></p>`;
+        resultDiv.innerHTML = `<p>アップロード成功: <a href="${result.urls[0]}" target="_blank">ファイルを開く</a></p>`;
       } else {
-        resultDiv.innerHTML = `<p>アップロード失敗: ${result.message}</p>`;
+        resultDiv.innerHTML = `<p>アップロード失敗: ${result.message}</p><p>詳細: ${result.error || '不明なエラー'}</p>`;
       }
     });
   </script>

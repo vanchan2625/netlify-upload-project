@@ -11,7 +11,7 @@
   "description": "",
   "dependencies": {
     "aws-sdk": "^2.1692.0",
-    "formidable-serverless": "^1.1.1",
+    "busboy": "^1.6.0",
     "streamifier": "^0.1.1"
   },
   "engines": {
