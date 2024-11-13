@@ -13,12 +13,12 @@ AWS.config.update({
 const s3 = new AWS.S3();
 
 exports.handler = async (event, context) => {
-  // CORS 対応: OPTIONS メソッドのハンドリング
+  // CORS Preflight リクエストの処理
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
       headers: {
-        'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+        'Access-Control-Allow-Origin': 'https://jade-narwhal-5293fa.netlify.app/', // 必要に応じて変更
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
       },
@@ -75,12 +75,16 @@ exports.handler = async (event, context) => {
         uploadPromises.push(uploadPromise);
       });
 
+      busboy.on('field', (fieldname, val) => {
+        console.log(`Field [${fieldname}]: value: ${val}`);
+      });
+
       busboy.on('error', (error) => {
         console.error('Busboy Error:', error);
         reject({
           statusCode: 500,
           headers: {
-            'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+            'Access-Control-Allow-Origin': 'https://jade-narwhal-5293fa.netlify.app/', // 必要に応じて変更
             'Access-Control-Allow-Methods': 'POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type',
           },
@@ -98,7 +102,7 @@ exports.handler = async (event, context) => {
           reject({
             statusCode: 400,
             headers: {
-              'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+              'Access-Control-Allow-Origin': 'https://jade-narwhal-5293fa.netlify.app/', // 必要に応じて変更
               'Access-Control-Allow-Methods': 'POST, OPTIONS',
               'Access-Control-Allow-Headers': 'Content-Type',
             },
@@ -110,13 +114,14 @@ exports.handler = async (event, context) => {
         }
 
         try {
+          console.log('Starting S3 uploads');
           const uploadedUrls = await Promise.all(uploadPromises);
           console.log('All files uploaded successfully:', uploadedUrls);
 
           resolve({
             statusCode: 200,
             headers: {
-              'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+              'Access-Control-Allow-Origin': 'https://jade-narwhal-5293fa.netlify.app/', // 必要に応じて変更
               'Access-Control-Allow-Methods': 'POST, OPTIONS',
               'Access-Control-Allow-Headers': 'Content-Type',
             },
@@ -130,7 +135,7 @@ exports.handler = async (event, context) => {
           reject({
             statusCode: 500,
             headers: {
-              'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+              'Access-Control-Allow-Origin': 'https://jade-narwhal-5293fa.netlify.app/', // 必要に応じて変更
               'Access-Control-Allow-Methods': 'POST, OPTIONS',
               'Access-Control-Allow-Headers': 'Content-Type',
             },
@@ -151,7 +156,7 @@ exports.handler = async (event, context) => {
       reject({
         statusCode: 500,
         headers: {
-          'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+          'Access-Control-Allow-Origin': 'https://jade-narwhal-5293fa.netlify.app/', // 必要に応じて変更
           'Access-Control-Allow-Methods': 'POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
         },
