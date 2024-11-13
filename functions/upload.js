@@ -13,66 +13,153 @@ AWS.config.update({
 const s3 = new AWS.S3();
 
 exports.handler = async (event, context) => {
+  // CORS 対応: OPTIONS メソッドのハンドリング
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+      body: '',
+    };
+  }
+
   return new Promise((resolve, reject) => {
-    const isBase64 = event.isBase64Encoded;
-    const body = isBase64 ? Buffer.from(event.body, 'base64') : Buffer.from(event.body);
+    try {
+      console.log('=== Upload Function Invoked ===');
 
-    const headers = event.headers || {};
+      const isBase64 = event.isBase64Encoded;
+      const bodyBuffer = isBase64
+        ? Buffer.from(event.body, 'base64')
+        : Buffer.from(event.body);
+      console.log(`isBase64Encoded: ${isBase64}`);
+      console.log(`Body Buffer Length: ${bodyBuffer.length} bytes`);
 
-    console.log('Starting upload function');
-    console.log('Headers:', headers);
-    console.log('Body length:', body.length);
+      const headers = event.headers || {};
+      console.log('Event Headers:', headers);
 
-    const busboy = new Busboy({
-      headers: headers,
-    });
-
-    let uploadPromises = [];
-
-    busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
-      console.log(`Uploading: ${filename}`);
-
-      const params = {
-        Bucket: process.env.S3_BUCKET_NAME,
-        Key: `uploads/${filename}`,
-        Body: file,
-        ContentType: mimetype,
-        ACL: 'public-read',
-      };
-
-      uploadPromises.push(s3.upload(params).promise());
-    });
-
-    busboy.on('error', (error) => {
-      console.error('Busboy error:', error);
-      reject({
-        statusCode: 500,
-        body: JSON.stringify({ message: 'ファイルアップロード中にエラーが発生しました。', error: error.message }),
+      const busboy = new Busboy({
+        headers: headers,
       });
-    });
 
-    busboy.on('finish', async () => {
-      try {
-        console.log('Busboy finished parsing');
-        const results = await Promise.all(uploadPromises);
-        console.log('All files uploaded successfully:', results);
+      let uploadPromises = [];
+      let fileCount = 0;
 
-        resolve({
-          statusCode: 200,
-          body: JSON.stringify({ message: 'ファイルが正常にアップロードされました。', urls: results.map(r => r.Location) }),
-        });
-      } catch (error) {
-        console.error('S3 upload error:', error);
+      busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+        fileCount++;
+        console.log(`Processing file [${fileCount}]: ${filename}`);
+
+        const params = {
+          Bucket: process.env.S3_BUCKET_NAME,
+          Key: `uploads/${filename}`,
+          Body: file,
+          ContentType: mimetype,
+          ACL: 'public-read', // 必要に応じて調整
+        };
+
+        console.log(`S3 Upload Parameters for ${filename}:`, params);
+
+        // ファイルを S3 にアップロード
+        const uploadPromise = s3.upload(params).promise()
+          .then(data => {
+            console.log(`Successfully uploaded ${filename} to ${data.Location}`);
+            return data.Location;
+          })
+          .catch(err => {
+            console.error(`Error uploading ${filename}:`, err);
+            throw err;
+          });
+
+        uploadPromises.push(uploadPromise);
+      });
+
+      busboy.on('error', (error) => {
+        console.error('Busboy Error:', error);
         reject({
           statusCode: 500,
-          body: JSON.stringify({ message: 'S3へのアップロードに失敗しました。', error: error.message }),
+          headers: {
+            'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          },
+          body: JSON.stringify({
+            message: 'ファイルアップロード中にエラーが発生しました。',
+            error: error.message,
+          }),
         });
-      }
-    });
+      });
 
-    // PassThrough ストリームを作成してバッファを流す
-    const stream = new PassThrough();
-    stream.end(body);
-    stream.pipe(busboy);
+      busboy.on('finish', async () => {
+        console.log('Busboy parsing finished');
+        if (fileCount === 0) {
+          console.error('No files were uploaded');
+          reject({
+            statusCode: 400,
+            headers: {
+              'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+              'Access-Control-Allow-Methods': 'POST, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+            body: JSON.stringify({
+              message: 'アップロードするファイルが見つかりません。',
+            }),
+          });
+          return;
+        }
+
+        try {
+          const uploadedUrls = await Promise.all(uploadPromises);
+          console.log('All files uploaded successfully:', uploadedUrls);
+
+          resolve({
+            statusCode: 200,
+            headers: {
+              'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+              'Access-Control-Allow-Methods': 'POST, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+            body: JSON.stringify({
+              message: 'ファイルが正常にアップロードされました。',
+              urls: uploadedUrls,
+            }),
+          });
+        } catch (error) {
+          console.error('Error during S3 upload:', error);
+          reject({
+            statusCode: 500,
+            headers: {
+              'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+              'Access-Control-Allow-Methods': 'POST, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+            body: JSON.stringify({
+              message: 'S3へのアップロードに失敗しました。',
+              error: error.message,
+            }),
+          });
+        }
+      });
+
+      // PassThrough ストリームを作成してバッファを流す
+      const stream = new PassThrough();
+      stream.end(bodyBuffer);
+      stream.pipe(busboy);
+    } catch (err) {
+      console.error('Unexpected Error:', err);
+      reject({
+        statusCode: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*', // 必要に応じて特定のオリジンに変更
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        },
+        body: JSON.stringify({
+          message: '予期せぬエラーが発生しました。',
+          error: err.message,
+        }),
+      });
+    }
   });
 };
